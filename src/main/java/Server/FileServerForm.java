@@ -6,6 +6,7 @@ package Server;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -216,47 +217,70 @@ public class FileServerForm extends javax.swing.JFrame {
     }//GEN-LAST:event_btnStopActionPerformed
 
     private void handleClient(Socket clientSocket) {
-        new Thread(() -> {
-            try (InputStream input = clientSocket.getInputStream(); BufferedReader reader = new BufferedReader(new InputStreamReader(input)); OutputStream output = clientSocket.getOutputStream(); PrintWriter writer = new PrintWriter(output, true)) {
+    new Thread(() -> {
+        try (
+            InputStream input = clientSocket.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+            OutputStream output = clientSocket.getOutputStream();
+            PrintWriter writer = new PrintWriter(output, true)
+        ) {
+            String command = reader.readLine();
 
-                String command = reader.readLine();
+            if ("LIST_FILES".equalsIgnoreCase(command)) {
+                // Lấy danh sách file trong thư mục "uploads"
+                File folder = new File("uploads");
+                File[] files = folder.listFiles();
 
-                if ("LIST_FILES".equalsIgnoreCase(command)) {
-                    // Lấy danh sách file trong thư mục "uploads"
-                    File folder = new File("uploads");
-                    File[] files = folder.listFiles();
-
-                    StringBuilder fileList = new StringBuilder();
-                    if (files != null) {
-                        for (File file : files) {
-                            if (file.isFile()) {
-                                fileList.append(file.getName()).append("\n");
-                            }
+                StringBuilder fileList = new StringBuilder();
+                if (files != null) {
+                    for (File file : files) {
+                        if (file.isFile()) {
+                            fileList.append(file.getName()).append("\n");
                         }
                     }
+                }
 
-                    writer.println(fileList.toString());
-                } else {
-                    // Nhận file
-                    String fileName = command; 
-                    File outputFile = new File("uploads/" + fileName);
-                    outputFile.getParentFile().mkdirs();
+                writer.println(fileList.toString());
+            } else if (command.startsWith("DOWNLOAD ")) {
+                // Xử lý lệnh DOWNLOAD
+                String fileName = command.substring(9).trim(); // Lấy tên file
+                File fileToDownload = new File("uploads/" + fileName);
 
-                    try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                if (fileToDownload.exists() && fileToDownload.isFile()) {
+                    // Gửi nội dung file
+                    try (FileInputStream fis = new FileInputStream(fileToDownload)) {
                         byte[] buffer = new byte[4096];
                         int bytesRead;
-                        while ((bytesRead = input.read(buffer)) != -1) {
-                            fos.write(buffer, 0, bytesRead);
+                        while ((bytesRead = fis.read(buffer)) != -1) {
+                            output.write(buffer, 0, bytesRead);
                         }
+                        output.flush(); // Đảm bảo tất cả dữ liệu được gửi đi
                     }
-
-                    addFileToTable(fileName);
+                } else {
+                    writer.println("ERROR: File not found"); // Báo lỗi nếu file không tồn tại
                 }
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } else {
+                // Nhận file
+                String fileName = command;
+                File outputFile = new File("uploads/" + fileName);
+                outputFile.getParentFile().mkdirs();
+
+                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = input.read(buffer)) != -1) {
+                        fos.write(buffer, 0, bytesRead);
+                    }
+                }
+
+                addFileToTable(fileName);
             }
-        }).start();
-    }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }).start();
+}
+
 
     private void addFileToTable(String fileName) {
         int rowCount = tableModel.getRowCount();
